@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+
+
+#get_ipython().run_line_magic('matplotlib', 'inline')
+import matplotlib.image as mpimg
+import numpy as np
+import matplotlib.pyplot as plt
+import os,sys
+from PIL import Image
+
+from keras.preprocessing.image import img_to_array
+from keras.preprocessing.image import array_to_img
+
+
+# Helper functions
+
+def load_image(infilename):
+    """
+    Function to load the image
+    """
+    data = mpimg.imread(infilename)
+    return data
+
+def img_float_to_uint8(img,PIXEL_DEPTH=255):
+    """
+    Get the groundtruth image as pixels taking values between 0 and 255
+    """
+    rimg = img - np.min(img)
+    rimg = (rimg / np.max(rimg) * PIXEL_DEPTH).round().astype(np.uint8)
+    return rimg
+
+# Concatenate an image and its groundtruth
+def concatenate_images(img, gt_img):
+    """
+    function to put two images side by side (the satellite and its groundtruth)
+    """
+    nChannels = len(gt_img.shape)
+    w = gt_img.shape[0]
+    h = gt_img.shape[1]
+    if nChannels == 3:
+        cimg = np.concatenate((img, gt_img), axis=1)
+    else:
+        gt_img_3c = np.zeros((w, h, 3), dtype=np.uint8)
+        gt_img8 = img_float_to_uint8(gt_img)          
+        gt_img_3c[:,:,0] = gt_img8
+        gt_img_3c[:,:,1] = gt_img8
+        gt_img_3c[:,:,2] = gt_img8
+        img8 = img_float_to_uint8(img)
+        cimg = np.concatenate((img8, gt_img_3c), axis=1)
+    return cimg
+
+def img_crop(im, w, h):
+    """
+    Function to crop image into many patches of given size
+    We work with patches of size 16x16
+    """
+    list_patches = []
+    imgwidth = im.shape[0]
+    imgheight = im.shape[1]
+    is_2d = len(im.shape) < 3
+    for i in range(0,imgheight,h):
+        for j in range(0,imgwidth,w):
+            if is_2d:
+                im_patch = im[j:j+w, i:i+h]
+            else:
+                im_patch = im[j:j+w, i:i+h, :]
+            list_patches.append(im_patch)
+    return list_patches
+
+def value_to_class_NN(v,foreground_threshold=0.25):
+    """
+    For our classification task, we need output values of 0 or 1
+    This function is used for CNN (needs output with two dimensions), then we will choose only the column we need (right column)
+    """
+    df = np.sum(np.mean(v))
+    if df > foreground_threshold:
+        return [0, 1]
+    else:
+        return [1, 0]
+
+def plot_img_pred_and_overlay(img, predicted_img,PIXEL_DEPTH=255):
+    """
+    INPUTS:
+    1)img : satellite image
+    2)predicted_img : its prediction(image format)
+    returns two different plots:
+    1) Image and its prediction side by side
+    2) Image and the prediction as a red background
+    """
+    w = img.shape[0]
+    h = img.shape[1]
+    color_mask = np.zeros((w, h, 3), dtype=np.uint8)
+    color_mask[:, :, 0] = predicted_img*PIXEL_DEPTH
+
+    img8 = img_float_to_uint8(img)
+    background = Image.fromarray(img8, 'RGB').convert("RGBA")
+    overlay = Image.fromarray(color_mask, 'RGB').convert("RGBA")
+    new_img = Image.blend(background, overlay, 0.2)
+
+    #show image and its prediction one on another
+    plt.figure(figsize=(6, 6)) # create a figure with the default size 
+    plt.imshow(new_img)
+
+    #show image and its prediction side by side
+    cimg = concatenate_images(img, predicted_img)
+    plt.figure(figsize=(10, 10)) # create a figure with the default size 
+    plt.imshow(cimg, cmap='Greys_r')
